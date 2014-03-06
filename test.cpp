@@ -14,6 +14,8 @@
 #include "memory.h"
 #include "memory_v3d2.h"
 #include "memory_mailbox.h"
+#include "controllist.h"
+#include "nopsled.h"
 
 // I/O access
 volatile unsigned *v3d;
@@ -97,7 +99,10 @@ int main(int argc, char **argv) {
 	}
 	
 	// We now have access to the v3d registers, we should do something.
-	testControlLists(allocator);
+	for (int i=12; i<21; i+=2) {
+		NopSled sled(allocator,(1<<i)+0xa);
+		sled.benchmark(v3d);
+	}
 	
 	return 0;
 }
