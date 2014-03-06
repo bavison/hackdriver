@@ -13,8 +13,9 @@ NopSled::NopSled(AllocatorBase *allocator, int size): ControlList(allocator) {
 		printf("errno when doing mmap\n");
 		return;
 	}
+	compilePointer = 0; // start at begining of object
 	for(int i = 0; i < size-1; i++) {
-		list[i] = 1; // NOP
+		AddNop(list);
 	}
 	list[size-10] = 0; // Halt.
 	instructions = size-10;
