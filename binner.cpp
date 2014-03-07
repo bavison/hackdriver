@@ -12,7 +12,6 @@ void testBinner(AllocatorBase *allocator, volatile unsigned *v3d) {
     printf("Error: Unable to allocate memory");
     return;
   }
-v3d[V3D_INTENA] = 3;
   uint32_t bus_addr = job.getRef()->getBusAddress();
   uint8_t *list = (uint8_t*) job.getRef()->mmap();
 
