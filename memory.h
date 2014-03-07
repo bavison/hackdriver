@@ -2,6 +2,7 @@
 #define MEMORY_H
 class MemoryReference {
 public:
+	virtual ~MemoryReference() {}
 	unsigned int getBusAddress() { return busAddress; }
 	unsigned int getSize() { return size; }
 	virtual void *mmap() = 0;

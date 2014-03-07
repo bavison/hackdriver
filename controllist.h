@@ -7,15 +7,38 @@
 class ControlList {
 public:
 	ControlList(AllocatorBase *allocator);
-	~ControlList();
+	virtual ~ControlList();
+	bool Allocate(int size);
+	MemoryReference *getRef() { return ref; }
+	void AddNop() { list[compilePointer++] = 1; };
+	void AddByte(uint8_t d) {
+		list[compilePointer++] = d;
+	}
+	void AddWord(uint32_t d) {
+		list[compilePointer++] = (d) & 0xff;
+		list[compilePointer++] = (d >> 8)  & 0xff;
+		list[compilePointer++] = (d >> 16) & 0xff;
+		list[compilePointer++] = (d >> 24) & 0xff;
+	}
+	void AddShort(uint16_t d) {
+		list[compilePointer++] = (d) & 0xff;
+		list[compilePointer++] = (d >> 8)  & 0xff;
+	}
+	void AddFloat(float f) {
+		uint32_t d = *((uint32_t *)&f);
+		list[compilePointer++] = (d) & 0xff;
+		list[compilePointer++] = (d >> 8)  & 0xff;
+		list[compilePointer++] = (d >> 16) & 0xff;
+		list[compilePointer++] = (d >> 24) & 0xff;
+	}
+	
+	unsigned int compilePointer;
+	uint8_t *list;
 protected:
 	void PostJob(int thread,unsigned int start, unsigned int size,volatile unsigned*v3d);
 	void WaitForJob(int thread,volatile unsigned*v3d);
-	bool Allocate(int size);
-	void AddNop(uint8_t *list) { list[compilePointer++] = 1; };
 
 	AllocatorBase *allocator;
 	MemoryReference *ref;
-	unsigned int compilePointer;
 };
 #endif

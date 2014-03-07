@@ -6,7 +6,7 @@
 class MailboxReference : public MemoryReference {
 friend class MailboxAllocator;
 public:
-	~MailboxReference();
+	virtual ~MailboxReference();
 	virtual void *mmap();
 	virtual void munmap();
 private:

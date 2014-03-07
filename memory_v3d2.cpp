@@ -10,13 +10,14 @@
 
 class V3D2MemReference : public MemoryReference {
 friend class V3D2Allocator;
-	~V3D2MemReference();
+	virtual ~V3D2MemReference();
 	virtual void *mmap();
 	virtual void munmap();
 private:
 	int handle,v3d2;
 };
 V3D2MemReference::~V3D2MemReference() {
+	puts("releasing memory");
 	ioctl(v3d2,V3D2_MEM_FREE,&handle);
 }
 void *V3D2MemReference::mmap() {
@@ -26,6 +27,7 @@ void *V3D2MemReference::mmap() {
 	}
 	ioctl(v3d2,V3D2_MEM_SELECT,&handle);
 	virt = ::mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,v3d2,0);
+	if ((int)virt == -1) return NULL;
 	return virt;
 }
 void V3D2MemReference::munmap() {

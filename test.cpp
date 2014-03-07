@@ -16,6 +16,7 @@
 #include "memory_mailbox.h"
 #include "controllist.h"
 #include "nopsled.h"
+#include "binner.h"
 
 // I/O access
 volatile unsigned *v3d;
@@ -39,8 +40,10 @@ int main(int argc, char **argv) {
 		exit(-1);
 	}
 	
+	testBinner(allocator,v3d);
+	return 0;
 	// We now have access to the v3d registers, we should do something.
-	for (int i=12; i<21; i+=2) {
+	for (int i=12; i<26; i+=1) {
 		NopSled sled(allocator,(1<<i)+0xa);
 		sled.benchmark(v3d);
 	}

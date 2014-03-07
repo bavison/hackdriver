@@ -7,15 +7,21 @@
 #include "v3d.h"
 
 NopSled::NopSled(AllocatorBase *allocator, int size): ControlList(allocator) {
-	Allocate(size);
+	instructions = 0;
+	if (Allocate(size)) {
+		puts("memory allocate fail");
+		return;
+	}
+	printf("allocated %dMB\n",size/1024/1024);
 	uint8_t *list = (uint8_t*)ref->mmap();
-	if ((int)list == -1) {
-		printf("errno when doing mmap\n");
+	if (!list) {
+		printf("error when doing mmap\n");
 		return;
 	}
 	compilePointer = 0; // start at begining of object
+	this->list = list;
 	for(int i = 0; i < size-1; i++) {
-		AddNop(list);
+		AddNop();
 	}
 	list[size-10] = 0; // Halt.
 	instructions = size-10;
@@ -26,9 +32,15 @@ void NopSled::benchmark(volatile unsigned *v3d) {
 	double runtime;
 	int clockrate;
 
+	if (!instructions) {
+		puts("compile failed, aborting");
+		return;
+	}
+
 	// And then we setup the v3d pipeline to execute the control list.
 	printf("V3D_CT0CS: 0x%08x\n", v3d[V3D_CT0CS]);
 	printf("Start Address: 0x%08x\n", ref->getBusAddress());
+v3d[V3D_INTENA] = 3;
 	gettimeofday(&start,0);
 	PostJob(0,ref->getBusAddress(),ref->getSize(),v3d);
 	// print status while running
