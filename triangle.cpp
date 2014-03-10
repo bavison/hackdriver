@@ -1,9 +1,15 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/ioctl.h>
 
 #include "compiler.h"
 #include "memory.h"
+#include "v3d2_ioctl.h"
+#include "v3d_core.h"
+#include "memory_v3d2.h"
+#include "v3d.h"
 
 MemoryReference *makeShaderCode(AllocatorBase *allocator) {
 	MemoryReference *shaderCode = allocator->Allocate(0x50);
@@ -68,7 +74,7 @@ MemoryReference *makeVertextData(AllocatorBase *allocator,int redx, int redy) {
 	return vertexData;
 }
 MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,uint32_t shaderUniforms, uint32_t vertexData) {
-	MemoryReference *shader = allocator->Allocate(0x10);
+	MemoryReference *shader = allocator->Allocate(0x20);
 	uint8_t *shadervirt = (uint8_t*)shader->mmap();
 	uint8_t *p = shadervirt;
 	addbyte(&p, 0x01); // flags
@@ -78,12 +84,12 @@ MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,u
 	addword(&p, shaderCode); // Fragment shader code
 	addword(&p, shaderUniforms); // Fragment shader uniforms
 	addword(&p, vertexData); // Vertex Data
-	assert((p - shadervirt) < 0x10);
+	assert((p - shadervirt) < 0x20);
 	shader->munmap();
 	return shader;
 }
 uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress) {
-	uint8_t *render = new uint8_t[0x200];
+	uint8_t *render = new uint8_t[0x2000];
 	uint8_t *p = render;
 	// Render control list
 	
@@ -136,8 +142,8 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress) {
 		}
 	}
 	int size = p - render;
-	assert(size < 0x200);
 	printf("render size %x\n",size);
+	assert(size < 0x2000);
 	return render;
 }
 uint8_t *makeBinner(uint32_t tileAllocationAddress,uint32_t tileAllocationSize, uint32_t tileState, uint32_t shaderRecordAddress, uint32_t primitiveIndexAddress) {
@@ -214,7 +220,7 @@ MemoryReference *makePrimitiveList(AllocatorBase *allocator) {
 	list->munmap();
 	return list;
 }
-void testTriangle(AllocatorBase *allocator, int redx,int redy) {
+void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned *v3d) {
 	int width = 1920;
 	int height = 1080;
 	int tilewidth = 30; // 1920/64
@@ -231,4 +237,38 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy) {
 			tileState->getBusAddress(),
 			shaderRecord->getBusAddress(),primitiveList->getBusAddress());
 	uint8_t *render = makeRenderer(finalFrame->getBusAddress(),tileAllocation->getBusAddress());
+
+	uint8_t *sublists = (uint8_t*)tileAllocation->mmap();
+	printf("sublists %p\n",sublists);
+	memset(sublists,0,0x8000);
+
+	JobCompileRequest job;
+	memset(&job,0,sizeof(job));
+	job.binner.code = binner;
+	job.binner.size = 0x80;
+	job.binner.run = 1;
+	job.binner.handle = -1; // auto-create one kernel side
+	job.Renderer.code = render;
+	job.Renderer.size = 0x2000;
+	ioctl(v3d2_get_fd(),V3D2_COMPILE_CL,&job);
+
+	while(v3d[V3D_CT0CS] & 0x20);
+	
+	for (int i=0; i<0x100; i++) printf("%d ",sublists[i]);
+	printf("\n");
+	//V3D2MemReference *rawbinner = new V3D2MemReference;
+	//rawbinner->handle = job.binner.handle; // the auto-created handle
+	//uint8_t *raw = (uint8_t*)rawbinner->mmap();
+	//printf("binner start: %d\n",raw[0]);
+	//delete rawbinner;
+	delete finalFrame;
+	delete tileAllocation;
+	delete tileState;
+	delete shaderCode;
+	delete shaderUniforms;
+	delete vertexData;
+	delete shaderRecord;
+	delete primitiveList;
+	delete binner;
+	delete render;
 }
