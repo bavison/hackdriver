@@ -11,7 +11,7 @@ test: ${OBJECTS}
 %.o: %.cpp
 	g++ -o $@ -Wall -Wextra -g $< -c -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads/ -I/opt/vc/include/interface/vmcs_host/linux/
 
-test.o: test.cpp memory_mailbox.h v3d.h v3d2_ioctl.h memory.h memory_v3d2.h mailbox.h controllist.h nopsled.h nopsled.h binner.h v3d_core.h
+test.o: test.cpp memory_mailbox.h v3d.h v3d2_ioctl.h memory.h memory_v3d2.h mailbox.h controllist.h nopsled.h nopsled.h binner.h v3d_core.h triangle.h
 mailbox.o: mailbox.cpp mailbox.h
 memory.o: memory.cpp memory.h
 memory_v3d2.o: memory_v3d2.cpp memory_v3d2.h memory.h v3d2_ioctl.h v3d_core.h
@@ -22,4 +22,4 @@ server.o: server.cpp
 client.o: client.cpp v3d2_ioctl.h
 binner.o: binner.cpp controllist.h v3d.h
 v3d_core.o: v3d_core.cpp
-triangle.o: triangle.cpp compiler.h
+triangle.o: triangle.cpp compiler.h memory.h v3d2_ioctl.h v3d_core.h memory_v3d2.h v3d.h

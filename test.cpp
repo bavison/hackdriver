@@ -7,6 +7,9 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <assert.h>
+
+#include "bcm_host.h"
 
 #include "mailbox.h"
 #include "v3d.h"
@@ -17,14 +20,68 @@
 #include "controllist.h"
 #include "nopsled.h"
 #include "binner.h"
+#include "v3d_core.h"
+#include "triangle.h"
 
 // I/O access
 volatile unsigned *v3d;
 
+void dispmanxtest() {
+	DISPMANX_DISPLAY_HANDLE_T display;
+	int ret;
+	DISPMANX_MODEINFO_T displayinfo;
+	DISPMANX_RESOURCE_HANDLE_T res;
+	int width = 1024;
+	int height = 576;
+	uint32_t vc_image_ptr;
+	DISPMANX_UPDATE_HANDLE_T update;
+	VC_RECT_T dst_rect,src_rect;
+	DISPMANX_ELEMENT_HANDLE_T element;
+
+	
+	bcm_host_init();
+	display = vc_dispmanx_display_open(0);
+	ret = vc_dispmanx_display_get_info( display, &displayinfo);
+	assert(ret==0);
+	printf("display is %dx%d\n",displayinfo.width,displayinfo.height);
+	res = vc_dispmanx_resource_create(VC_IMAGE_YUV420,width,height,&vc_image_ptr);
+	vc_image_ptr = vc_dispmanx_resource_get_image_handle(res);
+	printf("vc_image_ptr %x\n",vc_image_ptr);
+	assert(res);
+	update = vc_dispmanx_update_start(10);
+	assert(update);
+	vc_dispmanx_rect_set(&src_rect,0,0,width<<16,height<<16);
+	vc_dispmanx_rect_set(&dst_rect,0,(displayinfo.height - height)/2,width-32,height);
+	element = vc_dispmanx_element_add(update,display,2000,&dst_rect,res,&src_rect,DISPMANX_PROTECTION_NONE,NULL,NULL,DISPMANX_NO_ROTATE);
+	ret = vc_dispmanx_update_submit_sync(update);
+	assert(ret==0);
+	uint8_t *rawfb = (uint8_t*)mapmem(vc_image_ptr,0x1000);
+	for (int i=0; i<0x100; i++) {
+		printf("%02x ",rawfb[i]);
+	}
+	printf("\n");
+	unmapmem(rawfb,0x1000);
+	puts("sleeping");
+	sleep(10);
+	update = vc_dispmanx_update_start(10);
+	assert(update);
+	ret = vc_dispmanx_element_remove(update,element);
+	assert(ret==0);
+	ret = vc_dispmanx_update_submit_sync(update);
+	assert(ret==0);
+	ret = vc_dispmanx_resource_delete(res);
+	assert(ret==0);
+	ret = vc_dispmanx_display_close(display);
+	assert(ret==0);
+}
+
 int main(int argc, char **argv) {
 	bool v3dsupported = AllocatorBase::v3d2Supported();
 	AllocatorBase *allocator;
+	//dispmanxtest();
+	//return 0;
 	if (v3dsupported) {
+		v3d2_init();
 		puts("using new v3d2 driver");
 		allocator = new V3D2Allocator();
 	} else {
@@ -40,7 +97,8 @@ int main(int argc, char **argv) {
 		exit(-1);
 	}
 	
-	testBinner(allocator,v3d);
+	testTriangle(allocator,1920/2,200,v3d);
+	//testBinner(allocator,v3d);
 	return 0;
 	// We now have access to the v3d registers, we should do something.
 	for (int i=12; i<26; i+=1) {
