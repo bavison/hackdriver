@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <assert.h>
+#include <stdio.h>
 
 #include "compiler.h"
 #include "memory.h"
@@ -66,8 +67,7 @@ MemoryReference *makeVertextData(AllocatorBase *allocator,int redx, int redy) {
 	vertexData->munmap();
 	return vertexData;
 }
-
-MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,uint32_t shaderUniforms, uint32_t vertextData) {
+MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,uint32_t shaderUniforms, uint32_t vertexData) {
 	MemoryReference *shader = allocator->Allocate(0x10);
 	uint8_t *shadervirt = (uint8_t*)shader->mmap();
 	uint8_t *p = shadervirt;
@@ -77,10 +77,68 @@ MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,u
 	addbyte(&p, 3); // num varyings
 	addword(&p, shaderCode); // Fragment shader code
 	addword(&p, shaderUniforms); // Fragment shader uniforms
-	addword(&p, vertextData); // Vertex Data
+	addword(&p, vertexData); // Vertex Data
 	assert((p - shadervirt) < 0x10);
 	shader->munmap();
 	return shader;
+}
+uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress) {
+	uint8_t *render = new uint8_t[0x200];
+	uint8_t *p = render;
+	// Render control list
+	
+	// Clear color
+	addbyte(&p, 114);
+	addword(&p, 0xff000000); // Opaque Black
+	addword(&p, 0xff000000); // 32 bit clear colours need to be repeated twice
+	addword(&p, 0);
+	addbyte(&p, 0);
+	
+	// Tile Rendering Mode Configuration
+	addbyte(&p, 113);
+	addword(&p, outputFrame); // framebuffer addresss
+	addshort(&p, 1920); // width
+	addshort(&p, 1080); // height
+	addbyte(&p, 0x04); // framebuffer mode (linear rgba8888)
+	addbyte(&p, 0x00);
+	
+	// Do a store of the first tile to force the tile buffer to be cleared
+	// Tile Coordinates
+	addbyte(&p, 115);
+	addbyte(&p, 0);
+	addbyte(&p, 0);
+	
+	// Store Tile Buffer General
+	addbyte(&p, 28);
+	addshort(&p, 0); // Store nothing (just clear)
+	addword(&p, 0); // no address is needed
+	
+	// Link all binned lists together
+	for(int x = 0; x < 30; x++) { 
+		for(int y = 0; y < 17; y++) {
+			// Tile Coordinates
+			addbyte(&p, 115);
+			addbyte(&p, x);
+			addbyte(&p, y);
+			
+			// Call Tile sublist
+			addbyte(&p, 17);
+			addword(&p, tileAllocationAddress + (y * 30 + x) * 32);
+			
+			// Last tile needs a special store instruction
+			if(x == 29 && y == 16) {
+				// Store resolved tile color buffer and signal end of frame
+				addbyte(&p, 25);
+			} else {
+				// Store resolved tile color buffer
+				addbyte(&p, 24);
+			}
+		}
+	}
+	int size = p - render;
+	assert(size < 0x200);
+	printf("render size %x\n",size);
+	return render;
 }
 uint8_t *makeBinner(uint32_t tileAllocationAddress,uint32_t tileAllocationSize, uint32_t tileState, uint32_t shaderRecordAddress, uint32_t primitiveIndexAddress) {
 	uint8_t *binner = new uint8_t[0x80];
@@ -161,6 +219,7 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy) {
 	int height = 1080;
 	int tilewidth = 30; // 1920/64
 	int tileheight = 17; // 1080/64 (16.875)
+	MemoryReference *finalFrame = allocator->Allocate(tilewidth*tileheight*64*64*4);
 	MemoryReference *tileAllocation = allocator->Allocate(0x8000);
 	MemoryReference *tileState = allocator->Allocate(48 * tilewidth * tileheight);
 	MemoryReference *shaderCode = makeShaderCode(allocator);
@@ -171,4 +230,5 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy) {
 	uint8_t *binner = makeBinner(tileAllocation->getBusAddress(),0x8000,
 			tileState->getBusAddress(),
 			shaderRecord->getBusAddress(),primitiveList->getBusAddress());
+	uint8_t *render = makeRenderer(finalFrame->getBusAddress(),tileAllocation->getBusAddress());
 }
