@@ -97,7 +97,8 @@ int main(int argc, char **argv) {
 		exit(-1);
 	}
 	
-	testTriangle(allocator,1920/2,200,v3d);
+	int mbox = mbox_open();
+	testTriangle(mbox,allocator);
 	//testBinner(allocator,v3d);
 	return 0;
 	// We now have access to the v3d registers, we should do something.

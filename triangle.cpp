@@ -5,7 +5,7 @@
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <unistd.h>
-
+#include <math.h>
 
 #include "bcm_host.h"
 #include "compiler.h"
@@ -14,7 +14,27 @@
 #include "v3d_core.h"
 #include "memory_v3d2.h"
 #include "v3d.h"
+#include "mailbox.h"
 
+unsigned int get_dispman_handle(int file_desc, unsigned int handle) {
+	int i=0;
+	unsigned p[32];
+	p[i++] = 0; // size
+	p[i++] = 0x00000000; // process request
+	
+	p[i++] = 0x30014; // (the tag id)
+	p[i++] = 8; // (size of the buffer)
+	p[i++] = 4; // (size of the data)
+	p[i++] = handle;
+	p[i++] = 0; // filler
+	
+	p[i++] = 0x00000000; // end tag
+	p[0] = i*sizeof *p; // actual size
+	
+	mbox_property(file_desc, p);
+	printf("success %d, handle %x\n",p[5],p[6]);
+	return p[6];
+}
 MemoryReference *makeShaderCode(AllocatorBase *allocator) {
 	MemoryReference *shaderCode = allocator->Allocate(0x50);
 	uint8_t *shadervirt = (uint8_t*)shaderCode->mmap();
@@ -41,32 +61,45 @@ MemoryReference *makeShaderCode(AllocatorBase *allocator) {
 	shaderCode->munmap();
 	return shaderCode;
 }
-MemoryReference *makeVertextData(AllocatorBase *allocator,int redx, int redy) {
-	MemoryReference *vertexData = allocator->Allocate(0x60);
+void makeVertextData(MemoryReference *vertexData,int width,int height, int degrees) {
+	//MemoryReference *vertexData = allocator->Allocate(0x60);
 	uint8_t *vertexvirt = (uint8_t*)vertexData->mmap();
 	uint8_t *p = vertexvirt;
 
+	double angle = degrees / (180.0/M_PI);
+
+	int w = width/2;
+	int h = height/2;
+	uint16_t x = (sin(angle) * w) + w;
+	uint16_t y = (cos(angle) * h) + h;
+	printf("%d %d %d\n",x,y,degrees);
 	// Vertex: Top, red
-	addshort(&p, redx << 4); // X in 12.4 fixed point
-	addshort(&p, redy << 4); // Y in 12.4 fixed point
+	addshort(&p, x << 4); // X in 12.4 fixed point
+	addshort(&p, y << 4); // Y in 12.4 fixed point
 	addfloat(&p, 1.0f); // Z
 	addfloat(&p, 1.0f); // 1/W
 	addfloat(&p, 1.0f); // Varying 0 (Red)
 	addfloat(&p, 0.0f); // Varying 1 (Green)
 	addfloat(&p, 0.0f); // Varying 2 (Blue)
 
+	angle = (degrees+120) / (180.0/M_PI);
+	x = (sin(angle) * w) + w;
+	y = (cos(angle) * h) + h;
 	// Vertex: bottom left, Green
-	addshort(&p, 560 << 4); // X in 12.4 fixed point
-	addshort(&p, 800 << 4); // Y in 12.4 fixed point
+	addshort(&p, x << 4); // X in 12.4 fixed point
+	addshort(&p, y << 4); // Y in 12.4 fixed point
 	addfloat(&p, 1.0f); // Z
 	addfloat(&p, 1.0f); // 1/W
 	addfloat(&p, 0.0f); // Varying 0 (Red)
 	addfloat(&p, 1.0f); // Varying 1 (Green)
 	addfloat(&p, 0.0f); // Varying 2 (Blue)
 
+	angle = (degrees+120+120) / (180.0/M_PI);
+	x = (sin(angle) * w) + w;
+	y = (cos(angle) * h) + h;
 	// Vertex: bottom right, Blue
-	addshort(&p, 1360 << 4); // X in 12.4 fixed point
-	addshort(&p, 800 << 4); // Y in 12.4 fixed point
+	addshort(&p, x << 4); // X in 12.4 fixed point
+	addshort(&p, y << 4); // Y in 12.4 fixed point
 	addfloat(&p, 1.0f); // Z
 	addfloat(&p, 1.0f); // 1/W
 	addfloat(&p, 0.0f); // Varying 0 (Red)
@@ -75,7 +108,7 @@ MemoryReference *makeVertextData(AllocatorBase *allocator,int redx, int redy) {
 
 	assert((p - vertexvirt) < 0x60);
 	vertexData->munmap();
-	return vertexData;
+	//return vertexData;
 }
 MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,uint32_t shaderUniforms, uint32_t vertexData) {
 	MemoryReference *shader = allocator->Allocate(0x20);
@@ -99,8 +132,8 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int 
 	
 	// Clear color
 	addbyte(&p, 114);
-	addword(&p, 0xff000000); // Opaque Black
-	addword(&p, 0xff000000); // 32 bit clear colours need to be repeated twice
+	addword(&p, 0x00000000); // Opaque Black
+	addword(&p, 0x00000000); // 32 bit clear colours need to be repeated twice
 	addword(&p, 0); // clear zs and clear vg mask
 	addbyte(&p, 0); // clear stencil
 	
@@ -242,10 +275,10 @@ void renderFrame(uint8_t *start,int width,int height) {
 	//alpha.mask = 0;
 
 	vc_dispmanx_rect_set( &dst_rect, 0, 0, width, height);
-	printf("width:%d, start:%p, height:%d pitch:%d\n",width,start,height,pitch);
-	ret = vc_dispmanx_resource_write_data(resource,VC_IMAGE_RGBA32,pitch,start,&dst_rect);
-	printf("vc_dispmanx_resource_write_data == %d\n",ret);
-	assert( ret == 0 );
+	//printf("width:%d, start:%p, height:%d pitch:%d\n",width,start,height,pitch);
+	//ret = vc_dispmanx_resource_write_data(resource,VC_IMAGE_RGBA32,pitch,start,&dst_rect);
+	//printf("vc_dispmanx_resource_write_data == %d\n",ret);
+	//assert( ret == 0 );
 	update = vc_dispmanx_update_start( 10 );
 	assert(update);
 	vc_dispmanx_rect_set( &src_rect, 0, 0, width << 16, height << 16 );
@@ -277,27 +310,27 @@ void initDispman(int width, int height) {
 	assert( resource );
 }
 #define DIV_CIEL(x,y) ( ((x)+(y-1)) / y)
-void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned *v3d) {
+void testTriangle(int mbox,AllocatorBase *allocator) {
 	struct JobStatusPacket status;
 	struct timeval start,stop,spent;
 	double runtime;
-	uint8_t *framebuffer2 = new uint8_t[8294400];
 	int width = 1920;
 	int height = 1080;
 	int tilewidth = DIV_CIEL(width,64); // 1920/64
 	int tileheight = DIV_CIEL(height,64); // 1080/64 (16.875)
-	MemoryReference *finalFrame = allocator->Allocate(tilewidth*tileheight*64*64*4);
-	void *framedata = finalFrame->mmap();
+	//MemoryReference *finalFrame = allocator->Allocate(tilewidth*tileheight*64*64*4);
+	//void *framedata = finalFrame->mmap();
 	MemoryReference *tileAllocation = allocator->Allocate(0x8000);
 	MemoryReference *tileState = allocator->Allocate(48 * tilewidth * tileheight);
 	MemoryReference *shaderCode = makeShaderCode(allocator);
 	MemoryReference *shaderUniforms = allocator->Allocate(0x10);
-	MemoryReference *vertexData = makeVertextData(allocator,redx,redy);
+	MemoryReference *vertexData = allocator->Allocate(0x60);
 	MemoryReference *shaderRecord = makeShaderRecord(allocator,shaderCode->getBusAddress(),shaderUniforms->getBusAddress(),vertexData->getBusAddress());
 	MemoryReference *primitiveList = makePrimitiveList(allocator);
 	printf("tiles %dx%d\n",tilewidth,tileheight);
 	puts("initing dispman");
 	initDispman(width,height);
+	renderFrame(NULL,width,height);
 	int binnerSize;
 	puts("making binner");
 	uint8_t *binner = makeBinner(tileAllocation->getBusAddress(),0x8000,
@@ -306,16 +339,21 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned 
 			width,height,
 			tilewidth,tileheight);
 	int renderSize;
-	uint8_t *render = makeRenderer(finalFrame->getBusAddress(),tileAllocation->getBusAddress(),&renderSize,
+	int dispman_mem_handle = get_dispman_handle(mbox,resource);
+	uint32_t rawdispman = mem_lock(mbox,dispman_mem_handle);
+	uint8_t *render = makeRenderer(rawdispman,tileAllocation->getBusAddress(),&renderSize,
 			width,height,
 			tilewidth,tileheight);
 	uint8_t *sublists = (uint8_t*)tileAllocation->mmap();
 	printf("sublists %p\n",sublists);
-	memset(sublists,0,0x8000);
 
 	printf("binner size:%d renderer size:%d\n",binnerSize,renderSize);
 
-	for (int i=0; i<10; i++) {
+	int frames = 100;
+	gettimeofday(&start,0);
+	for (int i=0; i<frames; i++) {
+		memset(sublists,0,0x8000);
+		makeVertextData(vertexData,width,height,i);
 		
 		JobCompileRequest job;
 		memset(&job,0,sizeof(job));
@@ -326,31 +364,32 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned 
 		job.renderer.size = renderSize;
 		job.renderer.run = 1;
 		job.jobid = 123;
+
+		// currently, pass in a physiscal addr (kernel half not done)
+		// in future, pass the DISPMANX_RESOURCE_HANDLE_T directly
+		// if you dont want to use dispmanx, use a V3dMemoryHandle/MemoryReference
+		job.outputType = opMemoryHandle;
+		job.output.resource = rawdispman;
 		status.jobid = 0;
-		gettimeofday(&start,0);
-		ioctl(v3d2_get_fd(),V3D2_COMPILE_CL,&job);
+		int ret = ioctl(v3d2_get_fd(),V3D2_COMPILE_CL,&job);
+		if (ret) {
+			printf("error %d %s from V3D2_COMPILE_CL\n",errno,strerror(errno));
+			break;
+		}
 		
 		read(v3d2_get_fd(),&status,sizeof(status));
-		gettimeofday(&stop,0);
 		
-		printf("renderer done %x\n",v3d[V3D_CT1CS]);
-		timersub(&stop,&start,&spent);
-		runtime = (double)spent.tv_sec + ((double)spent.tv_usec / 1000000);
-		printf("old method took %f seconds %d\n",runtime,status.jobid);
-	
-	//V3D2MemReference *rawbinner = new V3D2MemReference;
-	//rawbinner->handle = job.binner.handle; // the auto-created handle
-	//uint8_t *raw = (uint8_t*)rawbinner->mmap();
-	//printf("binner start: %d\n",raw[0]);
-	//delete rawbinner;
-
-		memcpy(framebuffer2,framedata,width*height*4);
-		renderFrame(framebuffer2,1920,1080);
-		
+		//printf("renderer done %x\n",v3d[V3D_CT1CS]);
 	}
-	sleep(5);
-	finalFrame->munmap();
-	delete finalFrame;
+	gettimeofday(&stop,0);
+	timersub(&stop,&start,&spent);
+	runtime = (double)spent.tv_sec + ((double)spent.tv_usec / 1000000);
+	float fps = frames / runtime;
+	printf("took %f seconds to render %d frames, %f fps\n",runtime,frames,fps);
+	//sleep(5);
+	//finalFrame->munmap();
+	//delete finalFrame;
+	mem_unlock(mbox,dispman_mem_handle);
 	delete tileAllocation;
 	delete tileState;
 	delete shaderCode;
@@ -360,5 +399,4 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned 
 	delete primitiveList;
 	delete binner;
 	delete render;
-	delete framebuffer2;
 }

@@ -80,7 +80,7 @@ void *unmapmem(void *addr, unsigned int size)
  * use ioctl to send mbox property message
  */
 
-static int mbox_property(int file_desc, void *buf)
+int mbox_property(int file_desc, void *buf)
 {
    int ret_val = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
 
