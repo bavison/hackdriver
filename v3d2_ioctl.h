@@ -1,6 +1,6 @@
 #ifndef V3D2_IOCTL_H
 #define V3D2_IOCTL_H
-typedef signed int V3dMemoryHandle;
+typedef uint16_t V3dMemoryHandle;
 struct mem_alloc_request {
 	unsigned int size;
 //	unsigned int align;
@@ -23,12 +23,18 @@ typedef struct Job {
 	//V3dMemoryHandle handle; // in/out, overwrite it, -1 to create
 	uint8_t run;
 } Job;
+enum OutputType { opDispmanx, opMemoryHandle };
 typedef struct JobCompileRequest {
 	int jobid;
 	Job binner;
 	Job renderer;
 	Job *uniforms;
 	uint16_t uniformCount;
+	enum OutputType outputType;
+	union {
+		DISPMANX_RESOURCE_HANDLE_T resource;
+		V3dMemoryHandle handle;
+	} output;
 } JobCompileRequest;
 typedef struct JobStatusPacket {
 	int jobid;

@@ -6,8 +6,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include "bcm_host.h"
 
+#include "bcm_host.h"
 #include "compiler.h"
 #include "memory.h"
 #include "v3d2_ioctl.h"
@@ -92,7 +92,7 @@ MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,u
 	shader->munmap();
 	return shader;
 }
-uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int *sizeOut) {
+uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int *sizeOut, int width, int height, int tilewidth, int tileheight) {
 	uint8_t *render = new uint8_t[0x2000];
 	uint8_t *p = render;
 	// Render control list
@@ -101,16 +101,16 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int 
 	addbyte(&p, 114);
 	addword(&p, 0xff000000); // Opaque Black
 	addword(&p, 0xff000000); // 32 bit clear colours need to be repeated twice
-	addword(&p, 0);
-	addbyte(&p, 0);
+	addword(&p, 0); // clear zs and clear vg mask
+	addbyte(&p, 0); // clear stencil
 	
 	// Tile Rendering Mode Configuration
 	addbyte(&p, 113);
 	addword(&p, outputFrame); // framebuffer addresss
-	addshort(&p, 1920); // width
-	addshort(&p, 1080); // height
-	addbyte(&p, 0x04); // framebuffer mode (linear rgba8888)
-	addbyte(&p, 0x00);
+	addshort(&p, width); // width
+	addshort(&p, height); // height
+	addbyte(&p, 0x04); // multisample mpe, tilebuffer depth, framebuffer mode (linear rgba8888), decimate mode, memory format
+	addbyte(&p, 0x00); // vg mask, coverage mode, early-z update, early-z cov, double-buffer
 	
 	// Do a store of the first tile to force the tile buffer to be cleared
 	// Tile Coordinates
@@ -124,8 +124,8 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int 
 	addword(&p, 0); // no address is needed
 	
 	// Link all binned lists together
-	for(int x = 0; x < 30; x++) { 
-		for(int y = 0; y < 17; y++) {
+	for(int x = 0; x < tilewidth; x++) { 
+		for(int y = 0; y < tileheight; y++) {
 			// Tile Coordinates
 			addbyte(&p, 115);
 			addbyte(&p, x);
@@ -133,10 +133,10 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int 
 			
 			// Call Tile sublist
 			addbyte(&p, 17);
-			addword(&p, tileAllocationAddress + (y * 30 + x) * 32);
+			addword(&p, tileAllocationAddress + (y * tilewidth + x) * 32); // 2d array of 32byte objects
 			
 			// Last tile needs a special store instruction
-			if(x == 29 && y == 16) {
+			if ((x == (tilewidth-1)) && (y == (tileheight-1))) {
 				// Store resolved tile color buffer and signal end of frame
 				addbyte(&p, 25);
 			} else {
@@ -151,7 +151,7 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int 
 	assert(size < 0x2000);
 	return render;
 }
-uint8_t *makeBinner(uint32_t tileAllocationAddress,uint32_t tileAllocationSize, uint32_t tileState, uint32_t shaderRecordAddress, uint32_t primitiveIndexAddress, int *sizeOut) {
+uint8_t *makeBinner(uint32_t tileAllocationAddress,uint32_t tileAllocationSize, uint32_t tileState, uint32_t shaderRecordAddress, uint32_t primitiveIndexAddress, int *sizeOut, int width, int height, int tilewidth, int tileheight) {
 	uint8_t *binner = new uint8_t[0x80];
 	uint8_t *p = binner;
 	// Configuration stuff
@@ -162,9 +162,9 @@ uint8_t *makeBinner(uint32_t tileAllocationAddress,uint32_t tileAllocationSize, 
 	addword(&p, tileAllocationAddress); // tile allocation memory address
 	addword(&p, tileAllocationSize); // tile allocation memory size
 	addword(&p, tileState); // Tile state data address
-	addbyte(&p, 30); // 1920/64
-	addbyte(&p, 17); // 1080/64 (16.875)
-	addbyte(&p, 0x04); // config
+	addbyte(&p, tilewidth); // 1920/64
+	addbyte(&p, tileheight); // 1080/64 (16.875)
+	addbyte(&p, 0x04); // config, sets tile allocation size to 32bytes per tile
 
 	// Start tile binning.
 	addbyte(&p, 6);
@@ -177,8 +177,8 @@ uint8_t *makeBinner(uint32_t tileAllocationAddress,uint32_t tileAllocationSize, 
 	addbyte(&p, 102);
 	addshort(&p, 0);
 	addshort(&p, 0);
-	addshort(&p, 1920); // width
-	addshort(&p, 1080); // height
+	addshort(&p, width); // width
+	addshort(&p, height); // height
 
 	// State
 	addbyte(&p, 96);
@@ -260,7 +260,7 @@ void renderFrame(uint8_t *start,int width,int height) {
 	ret = vc_dispmanx_update_submit_sync( update );
 	assert( ret == 0 );
 }
-void initDispman() {
+void initDispman(int width, int height) {
 	int ret;
 	uint32_t vc_image_ptr;
 	VC_IMAGE_TYPE_T type = VC_IMAGE_RGBA32;
@@ -273,9 +273,10 @@ void initDispman() {
 	ret = vc_dispmanx_display_get_info( display, &info);
 	assert(ret == 0);
 	printf( "Display is %d x %d\n", info.width, info.height );
-	resource = vc_dispmanx_resource_create( type,1920,1080,&vc_image_ptr );
+	resource = vc_dispmanx_resource_create( type,width,height,&vc_image_ptr );
 	assert( resource );
 }
+#define DIV_CIEL(x,y) ( ((x)+(y-1)) / y)
 void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned *v3d) {
 	struct JobStatusPacket status;
 	struct timeval start,stop,spent;
@@ -283,8 +284,8 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned 
 	uint8_t *framebuffer2 = new uint8_t[8294400];
 	int width = 1920;
 	int height = 1080;
-	int tilewidth = 30; // 1920/64
-	int tileheight = 17; // 1080/64 (16.875)
+	int tilewidth = DIV_CIEL(width,64); // 1920/64
+	int tileheight = DIV_CIEL(height,64); // 1080/64 (16.875)
 	MemoryReference *finalFrame = allocator->Allocate(tilewidth*tileheight*64*64*4);
 	void *framedata = finalFrame->mmap();
 	MemoryReference *tileAllocation = allocator->Allocate(0x8000);
@@ -294,47 +295,48 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned 
 	MemoryReference *vertexData = makeVertextData(allocator,redx,redy);
 	MemoryReference *shaderRecord = makeShaderRecord(allocator,shaderCode->getBusAddress(),shaderUniforms->getBusAddress(),vertexData->getBusAddress());
 	MemoryReference *primitiveList = makePrimitiveList(allocator);
+	printf("tiles %dx%d\n",tilewidth,tileheight);
 	puts("initing dispman");
-	//initDispman();
+	initDispman(width,height);
 	int binnerSize;
 	puts("making binner");
 	uint8_t *binner = makeBinner(tileAllocation->getBusAddress(),0x8000,
 			tileState->getBusAddress(),
-			shaderRecord->getBusAddress(),primitiveList->getBusAddress(),&binnerSize);
+			shaderRecord->getBusAddress(),primitiveList->getBusAddress(),&binnerSize,
+			width,height,
+			tilewidth,tileheight);
 	int renderSize;
-	uint8_t *render = makeRenderer(finalFrame->getBusAddress(),tileAllocation->getBusAddress(),&renderSize);
-
+	uint8_t *render = makeRenderer(finalFrame->getBusAddress(),tileAllocation->getBusAddress(),&renderSize,
+			width,height,
+			tilewidth,tileheight);
 	uint8_t *sublists = (uint8_t*)tileAllocation->mmap();
 	printf("sublists %p\n",sublists);
 	memset(sublists,0,0x8000);
 
 	printf("binner size:%d renderer size:%d\n",binnerSize,renderSize);
 
-	JobCompileRequest job;
-	memset(&job,0,sizeof(job));
-	job.binner.code = binner;
-	job.binner.size = binnerSize;
-	job.binner.run = 1;
-	job.renderer.code = render;
-	job.renderer.size = renderSize;
-	job.renderer.run = 1;
-	job.jobid = 123;
-	status.jobid = 0;
-	gettimeofday(&start,0);
-	ioctl(v3d2_get_fd(),V3D2_COMPILE_CL,&job);
-	gettimeofday(&stop,0);
-
-	//while(v3d[V3D_CT0CS] & 0x20);
-
-	//printf("binner done %x\n",v3d[V3D_CT0CS]);
-	
-	//while(v3d[V3D_CT1CS] & 0x20);
-	read(v3d2_get_fd(),&status,sizeof(status));
-
-	printf("renderer done %x\n",v3d[V3D_CT1CS]);
-	timersub(&stop,&start,&spent);
-	runtime = (double)spent.tv_sec + ((double)spent.tv_usec / 1000000);
-	printf("old method took %f seconds %d\n",runtime,status.jobid);
+	for (int i=0; i<10; i++) {
+		
+		JobCompileRequest job;
+		memset(&job,0,sizeof(job));
+		job.binner.code = binner;
+		job.binner.size = binnerSize;
+		job.binner.run = 1;
+		job.renderer.code = render;
+		job.renderer.size = renderSize;
+		job.renderer.run = 1;
+		job.jobid = 123;
+		status.jobid = 0;
+		gettimeofday(&start,0);
+		ioctl(v3d2_get_fd(),V3D2_COMPILE_CL,&job);
+		
+		read(v3d2_get_fd(),&status,sizeof(status));
+		gettimeofday(&stop,0);
+		
+		printf("renderer done %x\n",v3d[V3D_CT1CS]);
+		timersub(&stop,&start,&spent);
+		runtime = (double)spent.tv_sec + ((double)spent.tv_usec / 1000000);
+		printf("old method took %f seconds %d\n",runtime,status.jobid);
 	
 	//V3D2MemReference *rawbinner = new V3D2MemReference;
 	//rawbinner->handle = job.binner.handle; // the auto-created handle
@@ -342,9 +344,11 @@ void testTriangle(AllocatorBase *allocator, int redx,int redy,volatile unsigned 
 	//printf("binner start: %d\n",raw[0]);
 	//delete rawbinner;
 
-	memcpy(framebuffer2,framedata,1920*1080*4);
-	//renderFrame(framebuffer2,1920,1080);
-	//sleep(5);
+		memcpy(framebuffer2,framedata,width*height*4);
+		renderFrame(framebuffer2,1920,1080);
+		
+	}
+	sleep(5);
 	finalFrame->munmap();
 	delete finalFrame;
 	delete tileAllocation;

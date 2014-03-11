@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "bcm_host.h"
 #include "memory_v3d2.h"
 #include "v3d2_ioctl.h"
 #include "v3d_core.h"
