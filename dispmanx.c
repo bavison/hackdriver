@@ -56,23 +56,6 @@ typedef struct
 
 static RECT_VARS_T  gRectVars;
 
-static void FillRect( VC_IMAGE_TYPE_T type, void *image, int pitch, int aligned_height, int x, int y, int w, int h, int val )
-{
-    int         row;
-    int         col;
-
-    uint16_t *line = (uint16_t *)image + y * (pitch>>1) + x;
-
-    for ( row = 0; row < h; row++ )
-    {
-        for ( col = 0; col < w; col++ )
-        {
-            line[col] = val;
-        }
-        line += (pitch>>1);
-    }
-}
-
 int main(void)
 {
     RECT_VARS_T    *vars;
@@ -83,6 +66,7 @@ int main(void)
     VC_IMAGE_TYPE_T type = VC_IMAGE_RGBA32;
     int width = WIDTH, height = HEIGHT;
     int pitch = ALIGN_UP(width*4, 32);
+	printf("width %d, pitch %d, height %d\n",WIDTH,pitch,HEIGHT);
     int aligned_height = ALIGN_UP(height, 16);
     VC_DISPMANX_ALPHA_T alpha = { DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS, 
                              220, /*alpha 0->255*/
@@ -111,6 +95,7 @@ char *data = malloc(8294400);
 FILE *f = fopen("frame.data","r");
 fread(data,1,8294400,f);
 fclose(f);
+printf("width:%d, start:%p, height:%d, pitch:%d\n",width,data,height,pitch);
     ret = vc_dispmanx_resource_write_data(  vars->resource,
                                             type,
                                             pitch,

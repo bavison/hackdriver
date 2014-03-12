@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <assert.h>
+#include <sys/time.h>
+#include "bcm_host.h"
 
 #include "mailbox.h"
 #include "v3d.h"
@@ -12,6 +14,10 @@
 // I/O access
 volatile unsigned *v3d;
 int mbox;
+uint8_t *framedata;
+DISPMANX_RESOURCE_HANDLE_T resource;
+
+void renderFrame(uint8_t *start,int width,int height);
 
 // Execute a nop control list to prove that we have contol.
 void testControlLists() {
@@ -36,8 +42,8 @@ void testControlLists() {
   list[0xbb] = 0; // Halt.
 
 // And then we setup the v3d pipeline to execute the control list.
-  printf("V3D_CT0CS: 0x%08x\n", v3d[V3D_CT0CS]); 
-  printf("Start Address: 0x%08x\n", bus_addr);
+  //printf("V3D_CT0CS: 0x%08x\n", v3d[V3D_CT0CS]); 
+  //printf("Start Address: 0x%08x\n", bus_addr);
   // Current Address = start of our list (bus address)
   v3d[V3D_CT0CA] = bus_addr;
   // End Address = just after the end of our list (bus address) 
@@ -45,13 +51,13 @@ void testControlLists() {
   v3d[V3D_CT0EA] = bus_addr + 0x100;
   
   // print status while running
-  printf("V3D_CT0CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT0CS], v3d[V3D_CT0CA]);
+  //printf("V3D_CT0CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT0CS], v3d[V3D_CT0CA]);
 
   // Wait a second to be sure the contorl list execution has finished
   while(v3d[V3D_CT0CS] & 0x20);
 
   // print the status again.
-  printf("V3D_CT0CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT0CS], v3d[V3D_CT0CA]);
+  //printf("V3D_CT0CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT0CS], v3d[V3D_CT0CA]);
 
 // Release memory;
   unmapmem((void *) list, 0x100);
@@ -83,8 +89,29 @@ void addfloat(uint8_t **list, float f) {
   *((*list)++) = (d >> 24) & 0xff;
 }
 
+unsigned int get_dispman_handle(int file_desc, unsigned int handle)
+{
+   int i=0;
+   unsigned p[32];
+   p[i++] = 0; // size
+   p[i++] = 0x00000000; // process request
+
+   p[i++] = 0x30014; // (the tag id)
+   p[i++] = 8; // (size of the buffer)
+   p[i++] = 4; // (size of the data)
+   p[i++] = handle;
+   p[i++] = 0; // filler
+
+   p[i++] = 0x00000000; // end tag
+   p[0] = i*sizeof *p; // actual size
+
+   mbox_property(file_desc, p);
+   printf("success %d, handle %x\n",p[5],p[6]);
+   return p[6];
+}
+
 // Render a single triangle to memory.
-void testTriangle() {
+void testTriangle(int redx,int redy) {
 // Like above, we allocate/lock/map some videocore memory
   // I'm just shoving everything in a single buffer because I'm lazy
   // 8Mb, 4k alignment
@@ -172,8 +199,8 @@ void testTriangle() {
 // Vertex Data
   p = list + 0xa0;
   // Vertex: Top, red
-  addshort(&p, (1920/2) << 4); // X in 12.4 fixed point
-  addshort(&p, 200 << 4); // Y in 12.4 fixed point
+  addshort(&p, redx << 4); // X in 12.4 fixed point
+  addshort(&p, redy << 4); // Y in 12.4 fixed point
   addfloat(&p, 1.0f); // Z
   addfloat(&p, 1.0f); // 1/W
   addfloat(&p, 1.0f); // Varying 0 (Red)
@@ -235,9 +262,13 @@ void testTriangle() {
   addword(&p, 0);
   addbyte(&p, 0);
 
+  int handle2 = get_dispman_handle(mbox,resource);
+  uint32_t raw = mem_lock(mbox,handle2);
+  printf("dispmanx %d %x\n",handle2,raw);
+
   // Tile Rendering Mode Configuration
   addbyte(&p, 113);
-  addword(&p, bus_addr + 0x10000); // framebuffer addresss
+  addword(&p, raw); // framebuffer addresss
   addshort(&p, 1920); // width
   addshort(&p, 1080); // height
   addbyte(&p, 0x04); // framebuffer mode (linear rgba8888)
@@ -281,8 +312,9 @@ void testTriangle() {
 
 
 // Run our control list
-  printf("Binner control list constructed\n");
-  printf("Start Address: 0x%08x, length: 0x%x\n", bus_addr, length);
+  //printf("Binner control list constructed\n");
+  //printf("Start Address: 0x%08x, length: 0x%x\n", bus_addr, length);
+v3d[V3D_L2CACTL] = 4;
 
   v3d[V3D_CT0CA] = bus_addr;
   v3d[V3D_CT0EA] = bus_addr + length;
@@ -291,28 +323,88 @@ void testTriangle() {
   // Wait for control list to execute
   while(v3d[V3D_CT0CS] & 0x20);
   
+assert(v3d[V3D_CT0CS] == 0x10);
   printf("V3D_CT0CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT0CS], v3d[V3D_CT0CA]);
   printf("V3D_CT1CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT1CS], v3d[V3D_CT1CA]);
+
+v3d[V3D_L2CACTL] = 4;
 
 
   v3d[V3D_CT1CA] = bus_addr + 0xe200;
   v3d[V3D_CT1EA] = bus_addr + 0xe200 + render_length;
 
   while(v3d[V3D_CT1CS] & 0x20);
+// assert(v3d[V3D_CT1CS] == 0x10);
   
   printf("V3D_CT1CS: 0x%08x, Address: 0x%08x\n", v3d[V3D_CT1CS], v3d[V3D_CT1CA]);
   v3d[V3D_CT1CS] = 0x20;
 
   // just dump the frame to a file
-  FILE *f = fopen("frame.data", "w");
-  fwrite(list + 0x10000, (1920*1080*4), 1, f);
-  fclose(f);
-  printf("frame buffer memory dumpped to frame.data\n");
+//  FILE *f = fopen("frame.data", "w");
+//  fwrite(list + 0x10000, (1920*1080*4), 1, f);
+//  fclose(f);
+//  printf("frame buffer memory dumpped to frame.data\n");
+mem_unlock(mbox,handle2);
+//memcpy(framedata,list + 0x10000,1920*1080*4);
 
 // Release resources
   unmapmem((void *) list, 0x800000);
   mem_unlock(mbox, handle);
   mem_free(mbox, handle);
+
+//f = fopen("frame.data","r");
+//fread(data,1,8294400,f);
+//fclose(f);
+  //renderFrame(framedata,1920,1080);
+}
+int displayed = 0;
+DISPMANX_ELEMENT_HANDLE_T element = 0;
+DISPMANX_MODEINFO_T info;
+DISPMANX_DISPLAY_HANDLE_T display;
+void renderFrame() {
+	VC_RECT_T dst_rect,src_rect;
+	int ret;
+	int width = 1920;
+	int height = 1080;
+	//int pitch = ALIGN_UP(width*4, 32);
+	DISPMANX_UPDATE_HANDLE_T update;
+	//VC_DISPMANX_ALPHA_T alpha;
+	//alpha.flags = DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS;
+	//alpha.opacity = 120;
+	//alpha.mask = 0;
+
+	//vc_dispmanx_rect_set( &dst_rect, 0, 0, width, height);
+	//printf("width:%d, start:%p, height:%d pitch:%d\n",width,start,height,pitch);
+	//ret = vc_dispmanx_resource_write_data(resource,VC_IMAGE_RGBA32,pitch,start,&dst_rect);
+	//printf("vc_dispmanx_resource_write_data == %d\n",ret);
+	//assert( ret == 0 );
+	update = vc_dispmanx_update_start( 10 );
+	assert(update);
+	vc_dispmanx_rect_set( &src_rect, 0, 0, width << 16, height << 16 );
+	vc_dispmanx_rect_set( &dst_rect, ( info.width - width ) / 2,
+		( info.height - height ) / 2,
+		width,
+		height );
+	if (displayed == 0) {
+		element = vc_dispmanx_element_add(update,display,2000,&dst_rect,resource,&src_rect,DISPMANX_PROTECTION_NONE,NULL,NULL,DISPMANX_NO_ROTATE);
+		displayed = 1;
+	}
+	ret = vc_dispmanx_update_submit_sync( update );
+	assert( ret == 0 );
+}
+void initDispman() {
+	int ret;
+	uint32_t vc_image_ptr;
+	VC_IMAGE_TYPE_T type = VC_IMAGE_RGBA32;
+
+	bcm_host_init();
+	display = vc_dispmanx_display_open(0);
+	ret = vc_dispmanx_display_get_info( display, &info);
+	assert(ret == 0);
+	printf( "Display is %d x %d\n", info.width, info.height );
+	resource = vc_dispmanx_resource_create( type,1920,1080,&vc_image_ptr );
+	assert( resource );
+	renderFrame();
 }
 
 int main(int argc, char **argv) {
@@ -328,10 +420,23 @@ int main(int argc, char **argv) {
     printf("Error: V3D pipeline isn't powered up and accessable.\n");
     exit(-1);
   }
-
+initDispman();
   // We now have access to the v3d registers, we should do something.
-  testTriangle();
-
+struct timeval start,stop,spent;
+double runtime;
+int frames = 50;
+framedata = new uint8_t[8294400];
+gettimeofday(&start,0);
+for (int i=0; i<frames; i++) {
+	printf(".");
+	testTriangle(1920/2,200+i);
+//	sleep(5);
+}
+gettimeofday(&stop,0);
+delete framedata;
+timersub(&stop,&start,&spent);
+runtime = (double)spent.tv_sec + ((double)spent.tv_usec / 1000000);
+printf("did %d frames in %f time, %f fps\n",frames,runtime,frames/runtime);
   return 0;
 }
 
