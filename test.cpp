@@ -20,7 +20,7 @@
 #include "controllist.h"
 #include "nopsled.h"
 #include "binner.h"
-#include "v3d_core.h"
+#include "v3d2.h"
 #include "triangle.h"
 
 // I/O access

@@ -11,7 +11,7 @@
 #include "compiler.h"
 #include "memory.h"
 #include "v3d2_ioctl.h"
-#include "v3d_core.h"
+#include "v3d2.h"
 #include "memory_v3d2.h"
 #include "v3d.h"
 #include "mailbox.h"
@@ -61,18 +61,19 @@ MemoryReference *makeShaderCode(AllocatorBase *allocator) {
 	shaderCode->munmap();
 	return shaderCode;
 }
-void makeVertextData(MemoryReference *vertexData,int width,int height, int degrees) {
+void makeVertexData(uint8_t *vertexvirt,int width,int height, int degrees) {
 	//MemoryReference *vertexData = allocator->Allocate(0x60);
-	uint8_t *vertexvirt = (uint8_t*)vertexData->mmap();
 	uint8_t *p = vertexvirt;
 
 	double angle = degrees / (180.0/M_PI);
 
-	int w = width/2;
-	int h = height/2;
-	uint16_t x = (sin(angle) * w) + w;
-	uint16_t y = (cos(angle) * h) + h;
-	printf("%d %d %d\n",x,y,degrees);
+	int w = 200;
+	int h = 200;
+	int xoff = width/2;
+	int yoff = height/2;
+	int16_t x = (sin(angle) * w) + xoff;
+	int16_t y = (cos(angle) * h) + yoff;
+	//printf("%d %d %d\n",x,y,degrees);
 	// Vertex: Top, red
 	addshort(&p, x << 4); // X in 12.4 fixed point
 	addshort(&p, y << 4); // Y in 12.4 fixed point
@@ -83,8 +84,8 @@ void makeVertextData(MemoryReference *vertexData,int width,int height, int degre
 	addfloat(&p, 0.0f); // Varying 2 (Blue)
 
 	angle = (degrees+120) / (180.0/M_PI);
-	x = (sin(angle) * w) + w;
-	y = (cos(angle) * h) + h;
+	x = (sin(angle) * w) + xoff;
+	y = (cos(angle) * h) + yoff;
 	// Vertex: bottom left, Green
 	addshort(&p, x << 4); // X in 12.4 fixed point
 	addshort(&p, y << 4); // Y in 12.4 fixed point
@@ -95,8 +96,8 @@ void makeVertextData(MemoryReference *vertexData,int width,int height, int degre
 	addfloat(&p, 0.0f); // Varying 2 (Blue)
 
 	angle = (degrees+120+120) / (180.0/M_PI);
-	x = (sin(angle) * w) + w;
-	y = (cos(angle) * h) + h;
+	x = (sin(angle) * w) + xoff;
+	y = (cos(angle) * h) + yoff;
 	// Vertex: bottom right, Blue
 	addshort(&p, x << 4); // X in 12.4 fixed point
 	addshort(&p, y << 4); // Y in 12.4 fixed point
@@ -107,7 +108,6 @@ void makeVertextData(MemoryReference *vertexData,int width,int height, int degre
 	addfloat(&p, 1.0f); // Varying 2 (Blue)
 
 	assert((p - vertexvirt) < 0x60);
-	vertexData->munmap();
 	//return vertexData;
 }
 MemoryReference *makeShaderRecord(AllocatorBase *allocator,uint32_t shaderCode,uint32_t shaderUniforms, uint32_t vertexData) {
@@ -138,11 +138,17 @@ uint8_t *makeRenderer(uint32_t outputFrame, uint32_t tileAllocationAddress, int 
 	addbyte(&p, 0); // clear stencil
 	
 	// Tile Rendering Mode Configuration
+	// linear rgba8888 == VC_IMAGE_RGBA32
+	// t-format rgba8888 = VC_IMAGE_TF_RGBA32
 	addbyte(&p, 113);
-	addword(&p, outputFrame); // framebuffer addresss
-	addshort(&p, width); // width
-	addshort(&p, height); // height
-	addbyte(&p, 0x04); // multisample mpe, tilebuffer depth, framebuffer mode (linear rgba8888), decimate mode, memory format
+	addword(&p, outputFrame);	//  0->31 framebuffer addresss
+	addshort(&p, width);		// 32->47 width
+	addshort(&p, height);		// 48->63 height
+	addbyte(&p, 0x4);		// 64 multisample mpe
+					// 65 tilebuffer depth
+					// 66->67 framebuffer mode (t-format rgba8888)
+					// 68->69 decimate mode
+					// 70->71 memory format
 	addbyte(&p, 0x00); // vg mask, coverage mode, early-z update, early-z cov, double-buffer
 	
 	// Do a store of the first tile to force the tile buffer to be cleared
@@ -264,36 +270,9 @@ DISPMANX_RESOURCE_HANDLE_T resource;
 DISPMANX_ELEMENT_HANDLE_T element = 0;
 DISPMANX_MODEINFO_T info;
 DISPMANX_DISPLAY_HANDLE_T display;
-void renderFrame(uint8_t *start,int width,int height) {
-	VC_RECT_T dst_rect,src_rect;
-	int ret;
-	int pitch = ALIGN_UP(width*4, 32);
-	DISPMANX_UPDATE_HANDLE_T update;
-	//VC_DISPMANX_ALPHA_T alpha;
-	//alpha.flags = DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS;
-	//alpha.opacity = 120;
-	//alpha.mask = 0;
-
-	vc_dispmanx_rect_set( &dst_rect, 0, 0, width, height);
-	//printf("width:%d, start:%p, height:%d pitch:%d\n",width,start,height,pitch);
-	//ret = vc_dispmanx_resource_write_data(resource,VC_IMAGE_RGBA32,pitch,start,&dst_rect);
-	//printf("vc_dispmanx_resource_write_data == %d\n",ret);
-	//assert( ret == 0 );
-	update = vc_dispmanx_update_start( 10 );
-	assert(update);
-	vc_dispmanx_rect_set( &src_rect, 0, 0, width << 16, height << 16 );
-	vc_dispmanx_rect_set( &dst_rect, ( info.width - width ) / 2,
-		( info.height - height ) / 2,
-		width,
-		height );
-	if (displayed == 0) {
-		element = vc_dispmanx_element_add(update,display,2000,&dst_rect,resource,&src_rect,DISPMANX_PROTECTION_NONE,NULL,NULL,DISPMANX_NO_ROTATE);
-		displayed = 1;
-	}
-	ret = vc_dispmanx_update_submit_sync( update );
-	assert( ret == 0 );
-}
 void initDispman(int width, int height) {
+	VC_RECT_T dst_rect,src_rect;
+	DISPMANX_UPDATE_HANDLE_T update;
 	int ret;
 	uint32_t vc_image_ptr;
 	VC_IMAGE_TYPE_T type = VC_IMAGE_RGBA32;
@@ -308,6 +287,24 @@ void initDispman(int width, int height) {
 	printf( "Display is %d x %d\n", info.width, info.height );
 	resource = vc_dispmanx_resource_create( type,width,height,&vc_image_ptr );
 	assert( resource );
+	//VC_DISPMANX_ALPHA_T alpha;
+	//alpha.flags = DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS;
+	//alpha.opacity = 120;
+	//alpha.mask = 0;
+
+	update = vc_dispmanx_update_start( 10 );
+	assert(update);
+	vc_dispmanx_rect_set( &src_rect, 0, 0, width << 16, height << 16 );
+	vc_dispmanx_rect_set( &dst_rect, ( info.width - width ) / 2,
+		( info.height - height ) / 2,
+		width,
+		height );
+	if (displayed == 0) {
+		element = vc_dispmanx_element_add(update,display,2000,&dst_rect,resource,&src_rect,DISPMANX_PROTECTION_NONE,NULL,NULL,DISPMANX_NO_ROTATE);
+		displayed = 1;
+	}
+	ret = vc_dispmanx_update_submit_sync( update );
+	assert( ret == 0 );
 }
 #define DIV_CIEL(x,y) ( ((x)+(y-1)) / y)
 void testTriangle(int mbox,AllocatorBase *allocator) {
@@ -325,12 +322,12 @@ void testTriangle(int mbox,AllocatorBase *allocator) {
 	MemoryReference *shaderCode = makeShaderCode(allocator);
 	MemoryReference *shaderUniforms = allocator->Allocate(0x10);
 	MemoryReference *vertexData = allocator->Allocate(0x60);
+	uint8_t *vertexvirt = (uint8_t*)vertexData->mmap();
 	MemoryReference *shaderRecord = makeShaderRecord(allocator,shaderCode->getBusAddress(),shaderUniforms->getBusAddress(),vertexData->getBusAddress());
 	MemoryReference *primitiveList = makePrimitiveList(allocator);
 	printf("tiles %dx%d\n",tilewidth,tileheight);
 	puts("initing dispman");
 	initDispman(width,height);
-	renderFrame(NULL,width,height);
 	int binnerSize;
 	puts("making binner");
 	uint8_t *binner = makeBinner(tileAllocation->getBusAddress(),0x8000,
@@ -349,11 +346,11 @@ void testTriangle(int mbox,AllocatorBase *allocator) {
 
 	printf("binner size:%d renderer size:%d\n",binnerSize,renderSize);
 
-	int frames = 100;
+	int frames = 4000;
 	gettimeofday(&start,0);
 	for (int i=0; i<frames; i++) {
 		memset(sublists,0,0x8000);
-		makeVertextData(vertexData,width,height,i);
+		makeVertexData(vertexvirt,width,height,i);
 		
 		JobCompileRequest job;
 		memset(&job,0,sizeof(job));
@@ -394,6 +391,7 @@ void testTriangle(int mbox,AllocatorBase *allocator) {
 	delete tileState;
 	delete shaderCode;
 	delete shaderUniforms;
+	vertexData->munmap();
 	delete vertexData;
 	delete shaderRecord;
 	delete primitiveList;

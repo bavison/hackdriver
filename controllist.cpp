@@ -1,12 +1,12 @@
 #include <sys/ioctl.h>
 #include <stdio.h>
 
+#include "bcm_host.h"
 #include "controllist.h"
 #include "v3d.h"
-#include "v3d_core.h"
+#include "v3d2.h"
 
 ControlList::ControlList(AllocatorBase *allocator) : allocator(allocator) {
-	binnerHandle = -1;
 }
 /*bool ControlList::Allocate(int size) {
 	ref = allocator->Allocate(size);
@@ -38,11 +38,9 @@ void ControlList::compileAndRun() {
 	JobCompileRequest req;
 	req.binner.code = binnerVirt;
 	req.binner.size = binnerSize;
-	req.binner.handle = binnerHandle; // TODO, send unused handles to a pool, and then find handles of the right size for reuse
 	req.binner.run = 1;
 	printf("binner at %p\n",binnerVirt);
 	if (ioctl(v3d2_get_fd(),V3D2_COMPILE_CL,&req)) { // error
 		puts("error compiling control lists");
 	}
-	binnerHandle = req.binner.handle; // this object is currently in-use, being ran on the binner core
 }

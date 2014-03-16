@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <sys/time.h>
 
+#include "bcm_host.h"
 #include "nopsled.h"
 #include "v3d.h"
 #include "v3d2_ioctl.h"

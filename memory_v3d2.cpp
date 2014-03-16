@@ -9,7 +9,7 @@
 #include "bcm_host.h"
 #include "memory_v3d2.h"
 #include "v3d2_ioctl.h"
-#include "v3d_core.h"
+#include "v3d2.h"
 
 V3D2MemReference::~V3D2MemReference() {
 	puts("releasing memory");

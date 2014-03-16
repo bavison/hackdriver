@@ -54,6 +54,5 @@ protected:
 	MemoryReference *ref;
 	uint8_t *binnerVirt;
 	uint32_t binnerSize;
-	V3dMemoryHandle binnerHandle;
 };
 #endif
