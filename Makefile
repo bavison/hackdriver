@@ -3,13 +3,15 @@ LIBOBJECTS=memory.o memory_v3d2.o v3d2.o
 CLIENT_OBJECTS=client.o
 SERVER_OBJECTS=server.o
 
-all: test server libV3D2.so
+all: test server libV3D2.so texturetest
 client: ${CLIENT_OBJECTS}
 	g++ ${CLIENT_OBJECTS} -o $@ -Wall -Wextra -g
 server: ${SERVER_OBJECTS}
 	g++ ${SERVER_OBJECTS} -o $@ -Wall -Wextra -g
 test: ${OBJECTS}
 	g++ ${OBJECTS} -o $@ -Wall -Wextra -g -L/opt/vc/lib/ -lbcm_host
+texturetest: test1.o tformat.o
+	g++ $+ -o $@ -g -lpng -L/opt/vc/lib/ -lbcm_host
 libV3D2.so: ${LIBOBJECTS}
 	${LD} -o $@ $+ -shared
 	cp -v $@ /media/videos/4tb/rpi/lib/
@@ -29,3 +31,5 @@ binner.o: binner.cpp controllist.h v3d.h v3d2_ioctl.h
 v3d_core.o: v3d_core.cpp
 triangle.o: triangle.cpp compiler.h memory.h v3d2_ioctl.h v3d_core.h memory_v3d2.h v3d.h
 v3d2.o: v3d2.cpp v3d2.h memory.h
+test1.o: test1.cpp tformat.h
+tformat.o: tformat.c tformat.h
