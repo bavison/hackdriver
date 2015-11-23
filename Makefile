@@ -9,12 +9,12 @@ client: ${CLIENT_OBJECTS}
 server: ${SERVER_OBJECTS}
 	g++ ${SERVER_OBJECTS} -o $@ -Wall -Wextra -g
 test: ${OBJECTS}
-	g++ ${OBJECTS} -o $@ -Wall -Wextra -g -L/opt/vc/lib/ -lbcm_host
+	g++ ${OBJECTS} -o $@ -Wall -Wextra -g -L/opt/vc/lib/ -lbcm_host -lvchiq_arm -lvcos
 texturetest: test1.o tformat.o
-	g++ $+ -o $@ -g -lpng -L/opt/vc/lib/ -lbcm_host
+	g++ $+ -o $@ -g -lpng -L/opt/vc/lib/ -lbcm_host -lvchiq_arm -lvcos
 libV3D2.so: ${LIBOBJECTS}
 	${LD} -o $@ $+ -shared
-	cp -v $@ /media/videos/4tb/rpi/lib/
+	#cp -v $@ /media/videos/4tb/rpi/lib/
 %.o: %.cpp
 	g++ -o $@ -Wall -Wextra -g $< -c -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads/ -I/opt/vc/include/interface/vmcs_host/linux/
 
