@@ -37,9 +37,10 @@ MailboxAllocator::MailboxAllocator() {
 	qpu_enable(mbox, 1);
 }
 MemoryReference *MailboxAllocator::Allocate(int size) {
-	unsigned int handle = mem_alloc(mbox,size,0x1000,MEM_FLAG_COHERENT | MEM_FLAG_ZERO);
+	extern int is_pi2;
+	unsigned int handle = mem_alloc(mbox,size,0x1000, (is_pi2 ? MEM_FLAG_DIRECT : MEM_FLAG_COHERENT) | MEM_FLAG_ZERO);
 	if (!handle) return NULL;
-	uint32_t bus_addr = mem_lock(mbox,handle); // FIXME, this may harm performance
+	uint32_t bus_addr = mem_lock(mbox,handle) &~ 0xc0000000; // FIXME, this may harm performance
 	MailboxReference *ref = new MailboxReference();
 	ref->handle = handle;
 	ref->busAddress = bus_addr;

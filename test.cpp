@@ -26,6 +26,8 @@
 // I/O access
 volatile unsigned *v3d;
 
+int is_pi2;
+
 void dispmanxtest() {
 	DISPMANX_DISPLAY_HANDLE_T display;
 	int ret;
@@ -75,11 +77,26 @@ void dispmanxtest() {
 	assert(ret==0);
 }
 
+void determine_pi_version(void) {
+  FILE *f;
+  char line[256];
+
+  is_pi2 = 1;
+  f = fopen("/proc/cpuinfo", "r");
+  while (!feof(f))
+  {
+    if (fscanf(f, "%s", line) && strstr(line, "BCM2708"))
+      is_pi2 = 0;
+  }
+  fclose(f);
+}
+
 int main(int argc, char **argv) {
 	bool v3dsupported = AllocatorBase::v3d2Supported();
 	AllocatorBase *allocator;
 	(void) argc;
 	(void) argv;
+	determine_pi_version();
 	//dispmanxtest();
 	//return 0;
 	if (v3dsupported) {
@@ -92,7 +109,7 @@ int main(int argc, char **argv) {
 	}
 	
 	// map v3d's registers into our address space.
-	v3d = (unsigned *) mapmem(0x20c00000, 0x1000);
+	v3d = (unsigned *) mapmem(is_pi2 ? 0x3fc00000 : 0x20c00000, 0x1000);
 	
 	if(v3d[V3D_IDENT0] != 0x02443356) { // Magic number.
 		printf("Error: V3D pipeline isn't powered up and accessable.\n");

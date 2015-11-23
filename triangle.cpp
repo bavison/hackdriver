@@ -337,7 +337,7 @@ void testTriangle(int mbox,AllocatorBase *allocator) {
 			tilewidth,tileheight);
 	int renderSize;
 	int dispman_mem_handle = get_dispman_handle(mbox,resource);
-	uint32_t rawdispman = mem_lock(mbox,dispman_mem_handle);
+	uint32_t rawdispman = mem_lock(mbox,dispman_mem_handle) &~ 0xc0000000;
 	uint8_t *render = makeRenderer(rawdispman,tileAllocation->getBusAddress(),&renderSize,
 			width,height,
 			tilewidth,tileheight);
