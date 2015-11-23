@@ -7,6 +7,8 @@
 #include <fcntl.h>
 
 int main(int argc, char **argv) {
+	(void) argc;
+	(void) argv;
 	int server = socket(AF_UNIX,SOCK_STREAM,0);
 	int ret,newclient,size;
 	int v3d2;

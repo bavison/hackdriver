@@ -44,7 +44,7 @@ unsigned int mem_free(int file_desc, unsigned int handle);
 unsigned int mem_lock(int file_desc, unsigned int handle);
 unsigned int mem_unlock(int file_desc, unsigned int handle);
 void *mapmem(unsigned int base, unsigned int size);
-void *unmapmem(void *addr, unsigned int size);
+void unmapmem(void *addr, unsigned int size);
 
 unsigned int execute_code(int file_desc, unsigned int code, unsigned int r0, unsigned int r1, unsigned int r2, unsigned int r3, unsigned int r4, unsigned int r5);
 unsigned int execute_qpu(int file_desc, unsigned int num_qpus, unsigned int control, unsigned int noflush, unsigned int timeout);

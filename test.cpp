@@ -78,6 +78,8 @@ void dispmanxtest() {
 int main(int argc, char **argv) {
 	bool v3dsupported = AllocatorBase::v3d2Supported();
 	AllocatorBase *allocator;
+	(void) argc;
+	(void) argv;
 	//dispmanxtest();
 	//return 0;
 	if (v3dsupported) {

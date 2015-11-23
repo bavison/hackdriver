@@ -20,7 +20,6 @@ void initDispman() {
 }
 void renderImage(uint8_t *image_data, int width, int height, VC_IMAGE_TYPE_T type, int offset) {
 	DISPMANX_RESOURCE_HANDLE_T resource;
-	DISPMANX_ELEMENT_HANDLE_T element;
 	int ret;
 	uint32_t vc_image_ptr;
 	DISPMANX_UPDATE_HANDLE_T update;
@@ -38,7 +37,7 @@ void renderImage(uint8_t *image_data, int width, int height, VC_IMAGE_TYPE_T typ
 		( info.height - height ) / 2,
 		width,
 		height );
-	element = vc_dispmanx_element_add(update,display,2000,&dst_rect,resource,&src_rect,DISPMANX_PROTECTION_NONE,NULL,NULL,DISPMANX_NO_ROTATE);
+	vc_dispmanx_element_add(update,display,2000,&dst_rect,resource,&src_rect,DISPMANX_PROTECTION_NONE,NULL,NULL,DISPMANX_NO_ROTATE);
 	ret = vc_dispmanx_update_submit_sync( update );
 	assert( ret == 0 );
 }
@@ -83,12 +82,11 @@ int main(int argc, char *argv[]) {
 	
 	png_bytep *row_pointers = new png_bytep[theight];
 	assert(row_pointers);
-	for (int i=0; i<theight; i++) {
+	for (png_uint_32 i=0; i<theight; i++) {
 		row_pointers[i] = image_data + i * rowbytes;
 	}
 	
 	png_read_image(png_ptr,row_pointers);
-	uint32_t *t = (uint32_t*)image_data;
 
 	initDispman();
 	renderImage(image_data,twidth,theight,VC_IMAGE_RGBA32,2);
@@ -96,7 +94,6 @@ int main(int argc, char *argv[]) {
 	convert((uint32_t*)image_data,256,256,tformat);
 	assert(tformat);
 	renderImage((uint8_t*)tformat,twidth,theight,VC_IMAGE_TF_RGBA32,0);
-	char foo[10];
 	//std::cin >> foo;
 	sleep(10);
 	delete []image_data;

@@ -67,7 +67,7 @@ void *mapmem(unsigned int base, unsigned int size)
    return (char *)mem + offset;
 }
 
-void *unmapmem(void *addr, unsigned int size)
+void unmapmem(void *addr, unsigned int size)
 {
    int s = munmap(addr, size);
    if (s != 0) {
