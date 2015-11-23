@@ -9,14 +9,14 @@ client: ${CLIENT_OBJECTS}
 server: ${SERVER_OBJECTS}
 	g++ ${SERVER_OBJECTS} -o $@ -Wall -Wextra -g
 test: ${OBJECTS}
-	g++ ${OBJECTS} -o $@ -Wall -Wextra -g -L/opt/vc/lib/ -lbcm_host -lvchiq_arm -lvcos
+	g++ ${OBJECTS} -o $@ -Wall -Wextra -g -L/opt/vc.bak/lib/ -lbcm_host -lvchiq_arm -lvcos
 texturetest: test1.o tformat.o
-	g++ $+ -o $@ -g -lpng -L/opt/vc/lib/ -lbcm_host -lvchiq_arm -lvcos
+	g++ $+ -o $@ -g -lpng -L/opt/vc.bak/lib/ -lbcm_host -lvchiq_arm -lvcos
 libV3D2.so: ${LIBOBJECTS}
 	${LD} -o $@ $+ -shared
 	#cp -v $@ /media/videos/4tb/rpi/lib/
 %.o: %.cpp
-	g++ -o $@ -Wall -Wextra -g $< -c -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads/ -I/opt/vc/include/interface/vmcs_host/linux/
+	g++ -o $@ -Wall -Wextra -g $< -c -I/opt/vc.bak/include/ -I/opt/vc.bak/include/interface/vcos/pthreads/ -I/opt/vc.bak/include/interface/vmcs_host/linux/
 
 test.o: test.cpp memory_mailbox.h v3d.h v3d2_ioctl.h memory.h memory_v3d2.h mailbox.h controllist.h nopsled.h nopsled.h binner.h v3d2.h triangle.h
 mailbox.o: mailbox.cpp mailbox.h
